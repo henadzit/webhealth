@@ -1,18 +1,29 @@
 
 import time
+import re
 
+import random
 import requests
 import gevent
 from influxdb import influxdb08
 
 
-def _get_websites(filename):
+HTTP_HTTPS_REGEX = re.compile('$https?://')
+
+
+def _get_websites_generator(filename):
     with open(filename) as f:
-        return [w.strip() for w in f.readlines()]
+        websites = (w.strip() for w in f.readlines() if not w.strip().startswith('#'))
+
+    for w in websites:
+        if HTTP_HTTPS_REGEX.match(w):
+            yield w
+        else:
+            yield 'http://' + w
 
 
 def _post_metric(website, success, load_time, code=None):
-    print('M: website={}, success={}, code={}, load_time={}'.format(website, success, code, load_time))
+    print('M: website={}, time={}, success={}, code={}, load_time={}'.format(website, time.time(), success, code, load_time))
 
 
 def _open_website(website, interval, **headers):
@@ -20,6 +31,9 @@ def _open_website(website, interval, **headers):
         'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2272.101 Safari/537.36'
     }
     default_headers.update(**headers)
+
+    # prevents greenlets from starting pulling data all at once
+    time.sleep(random.randint(0, interval))
 
     while True:
         start = time.time()
@@ -44,7 +58,7 @@ def _open_website(website, interval, **headers):
 def run(website_filename, interval=60):
     threads = []
 
-    for website in _get_websites(website_filename):
+    for website in _get_websites_generator(website_filename):
         threads.append(gevent.spawn(_open_website, website, interval))
 
     gevent.joinall(threads)
