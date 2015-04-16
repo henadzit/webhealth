@@ -3,63 +3,67 @@ Table schema
 
 create table if not exists webhealth_metrics.metrics (
     website varchar(256) not null,
-    time double not null,
     success tinyint not null,
-    code smallint not null,
-    load_time double not null
+    start_time double not null,
+    end_time double not null,
+    duration double not null,
+    http_code smallint not null
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 """
 
 import argparse
-import re
 import getpass
 import textwrap
 
 import MySQLdb
 
+import webhealth
 
-METRIC_REGEX = re.compile('^M: website=([^,]+), time=([^,]+), success=([^,]+), code=([^,]+), load_time=([^,\n]+)$')
+
 INSERT_BATCH_LIMIT = 100
 
-db = None
-to_insert = []
 
+class MetricDAO(object):
+    def __init__(self, db, user, password):
+        self._db = MySQLdb.connect(host='localhost',
+                                   user=user,
+                                   passwd=password,
+                                   db=db)
+        self._buffer_to_insert = []
 
-def _put_into_db(website, time, success, code, load_time):
-    global to_insert
-    global db
+    def add(self, metric):
+        self._buffer_to_insert.append(metric)
 
-    to_insert.append((website,
-                      time,
-                      1 if success else 0,
-                      0 if code is None or code == 'None' else code,
-                      load_time))
+        if len(self._buffer_to_insert) >= INSERT_BATCH_LIMIT:
+            self.flush_buffer()
 
-    if len(to_insert) >= INSERT_BATCH_LIMIT:
-        c = db.cursor()
-        c.executemany(textwrap.dedent('''insert into metrics (website, time, success, code, load_time)
-                                         values (%s, %s, %s, %s, %s)'''), to_insert)
-        db.commit()
+    def flush_buffer(self):
+        if self._buffer_to_insert:
+            c = self._db.cursor()
+            c.executemany(textwrap.dedent('''insert into metrics (website, success, start_time, end_time, duration, http_code)
+                                             values (%s, %s, %s, %s, %s, %s)'''), [m.to_mysql_tuple() for m in self._buffer_to_insert])
+            self._db.commit()
 
-        to_insert = []
+            self._buffer_to_insert = []
 
 
 def main():
-    global db
     parser = argparse.ArgumentParser()
     parser.add_argument('--filename', dest='filename', required=True)
     parser.add_argument('--user', dest='user', required=True)
     parser.add_argument('--db-name', dest='db_name', required=True)
     args = parser.parse_args()
 
-    db = MySQLdb.connect(host='localhost',
-                         user=args.user,
-                         passwd=getpass.getpass(),
-                         db=args.db_name)
+    metric_dao = MetricDAO(args.db_name,
+                           args.user,
+                           getpass.getpass())
 
     with open(args.filename) as f:
         for l in f.readlines():
-            _put_into_db(*METRIC_REGEX.match(l).groups())
+            metric = webhealth.Metric.from_json(l)
+            metric_dao.add(metric)
+
+    metric_dao.flush_buffer()
 
 
 if __name__ == '__main__':

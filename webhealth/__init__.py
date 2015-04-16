@@ -5,10 +5,36 @@ import re
 import random
 import requests
 import gevent
-from influxdb import influxdb08
+import jsonpickle
 
 
 HTTP_HTTPS_REGEX = re.compile('^https?://')
+
+
+class Metric(object):
+    def __init__(self, website, success, start_time, end_time, http_code, exception=None):
+        self.website = website
+        self.success = success
+        self.start_time = start_time
+        self.end_time = end_time
+        self.http_code = http_code
+        self.exception = exception
+
+    def to_json(self):
+        return jsonpickle.encode(self)
+
+    def to_mysql_tuple(self):
+        return (self.website,
+                1 if self.success else 0,
+                self.start_time,
+                self.end_time,
+                self.end_time - self.start_time, # duration
+                0 if self.http_code is None else self.http_code)
+
+
+    @staticmethod
+    def from_json(json_str):
+        return jsonpickle.decode(json_str)
 
 
 def _get_websites_generator(filename):
@@ -22,8 +48,8 @@ def _get_websites_generator(filename):
             yield 'http://' + w
 
 
-def _post_metric(website, success, load_time, code=None):
-    print('M: website={}, time={}, success={}, code={}, load_time={}'.format(website, time.time(), success, code, load_time))
+def _post_metric(metric):
+    print(metric.to_json())
 
 
 def _open_website(website, interval, **headers):
@@ -43,14 +69,16 @@ def _open_website(website, interval, **headers):
                                 allow_redirects=True,
                                 verify=False,
                                 timeout=5)
-        except requests.RequestException:
-            duration = time.time() - start
-            _post_metric(website, False, duration)
+        except requests.RequestException as e:
+            end = time.time()
+            metric = Metric(website, False, start, end, None, e)
+            _post_metric(metric)
         else:
-            duration = time.time() - start
-            _post_metric(website, resp.ok, duration, resp.status_code)
+            end = time.time()
+            metric = Metric(website, resp.ok, start, end, resp.status_code)
+            _post_metric(metric)
 
-        sleep_time = interval - duration
+        sleep_time = interval - (end - start)
         if sleep_time > 0:
             time.sleep(sleep_time)
 
