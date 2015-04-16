@@ -8,7 +8,7 @@ import gevent
 from influxdb import influxdb08
 
 
-HTTP_HTTPS_REGEX = re.compile('$https?://')
+HTTP_HTTPS_REGEX = re.compile('^https?://')
 
 
 def _get_websites_generator(filename):
