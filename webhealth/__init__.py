@@ -1,8 +1,10 @@
+from __future__ import print_function
 
 import time
 import re
-
 import random
+import sys
+
 import requests
 import gevent
 import jsonpickle
@@ -77,6 +79,7 @@ def _open_website(website, interval, **headers):
             end = time.time()
             metric = Metric(website, resp.ok, start, end, resp.status_code)
             _post_metric(metric)
+        print('trace: {}: duration={}s'.format(website, end-start), file=sys.stderr)
 
         sleep_time = interval - (end - start)
         if sleep_time > 0:
