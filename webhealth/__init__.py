@@ -1,5 +1,6 @@
 from __future__ import print_function
 
+import datetime
 import time
 import re
 import random
@@ -7,89 +8,107 @@ import sys
 
 import requests
 import gevent
-import jsonpickle
+
+from webhealth.model import Metric
 
 
 HTTP_HTTPS_REGEX = re.compile('^https?://')
 
-
-class Metric(object):
-    def __init__(self, website, success, start_time, end_time, http_code, exception=None):
-        self.website = website
-        self.success = success
-        self.start_time = start_time
-        self.end_time = end_time
-        self.http_code = http_code
-        self.exception = exception
-
-    def to_json(self):
-        return jsonpickle.encode(self)
-
-    def to_mysql_tuple(self):
-        return (self.website,
-                1 if self.success else 0,
-                self.start_time,
-                self.end_time,
-                self.end_time - self.start_time, # duration
-                0 if self.http_code is None else self.http_code)
-
-
-    @staticmethod
-    def from_json(json_str):
-        return jsonpickle.decode(json_str)
+# only desktop browsers to catch only desktop errors. I might need to do mobile checks separately.
+# It has the format (User-Agent, Accept)
+COMMON_HEADERS = [
+    # Chrome
+    ('Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2272.118 Safari/537.36',
+     'application/xml,application/xhtml+xml,text/html;q=0.9, text/plain;q=0.8,image/png,*/*;q=0.5'),
+    ('Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2272.101 Safari/537.36',
+     'application/xml,application/xhtml+xml,text/html;q=0.9, text/plain;q=0.8,image/png,*/*;q=0.5'),
+    # Firefox
+    ('Mozilla/5.0 (Macintosh; Intel Mac OS X 10.10; rv:37.0) Gecko/20100101 Firefox/37.0',
+     'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'),
+    ('Mozilla/5.0 (Windows NT 6.1; WOW64; rv:37.0) Gecko/20100101 Firefox/37.0',
+     'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'),
+    # Safari
+    ('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_2) AppleWebKit/600.4.10 (KHTML, like Gecko) Version/8.0.4 Safari/600.4.10',
+     'application/xml,application/xhtml+xml,text/html;q=0.9, text/plain;q=0.8,image/png,*/*;q=0.5'),
+    ('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2311.90 Safari/537.36',
+     'application/xml,application/xhtml+xml,text/html;q=0.9, text/plain;q=0.8,image/png,*/*;q=0.5')
+    # Sorry Internet Explorer
+]
 
 
 def _get_websites_generator(filename):
     with open(filename) as f:
-        websites = (w.strip() for w in f.readlines() if not w.strip().startswith('#'))
-
-    for w in websites:
-        if HTTP_HTTPS_REGEX.match(w):
-            yield w
-        else:
-            yield 'http://' + w
+        for w in f.readlines():
+            w = w.strip()
+            if not w.startswith('#'):
+                yield w
 
 
-def _post_metric(metric):
-    print(metric.to_json())
+class WebhealthWorker(gevent.Greenlet):
+    def __init__(self, website, interval, data_log, info_log):
+        gevent.Greenlet.__init__(self)
+        self._website = website
+        self._interval = interval
+        self._data_log = data_log
+        self._info_log = info_log
+
+    def _post_metric(self, m):
+        self._data_log.info(m.to_json())
+
+    def _run(self):
+        # prevents greenlets from starting pulling data all at once
+        time.sleep(random.randint(0, self._interval))
+
+        while True:
+            start = datetime.datetime.now()
+
+            try:
+                endpoint = self._website if HTTP_HTTPS_REGEX.match(self._website) else 'http://' + self._website
+                user_agent, accept = random.choice(COMMON_HEADERS)
+                headers = {
+                    'Accept': accept,
+                    'User-Agent': user_agent,
+                    'Accept-Language': 'en-US,en;q=0.5',
+                    'Accept-Encoding': 'gzip, deflate'
+                }
+
+                resp = requests.get(endpoint,
+                                    headers=headers,
+                                    allow_redirects=True,
+                                    verify=False,
+                                    timeout=10)
+            except requests.RequestException as e:
+                if isinstance(e, requests.Timeout):
+                    state = Metric.STATE_TIMEOUT
+                else:
+                    self._info_log.info('Connection failure to {}'.format(self._website), exc_info=e)
+                    state = Metric.STATE_OTHER_FAILURE
+
+                # add handling of 'to many redirecs'
+
+                http_code = 0
+            else:
+                state = Metric.STATE_OK if resp.ok else Metric.STATE_BAD_HTTP_CODE
+                http_code = resp.status_code
+
+            end = datetime.datetime.now()
+            metric = Metric(self._website, state, start, end, http_code)
+            self._post_metric(metric)
+
+            duration = (end-start).total_seconds()
+            self._info_log.info('Processed {}: duration={}, state={}'.format(self._website, duration, state))
+
+            sleep_time = self._interval - duration
+            if sleep_time > 0:
+                time.sleep(sleep_time)
 
 
-def _open_website(website, interval, **headers):
-    default_headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2272.101 Safari/537.36'
-    }
-    default_headers.update(**headers)
-
-    # prevents greenlets from starting pulling data all at once
-    time.sleep(random.randint(0, interval))
-
-    while True:
-        start = time.time()
-        try:
-            resp = requests.get(website,
-                                headers=headers,
-                                allow_redirects=True,
-                                verify=False,
-                                timeout=5)
-        except requests.RequestException as e:
-            end = time.time()
-            metric = Metric(website, False, start, end, None, e)
-            _post_metric(metric)
-        else:
-            end = time.time()
-            metric = Metric(website, resp.ok, start, end, resp.status_code)
-            _post_metric(metric)
-        print('trace: {}: duration={}s'.format(website, end-start), file=sys.stderr)
-
-        sleep_time = interval - (end - start)
-        if sleep_time > 0:
-            time.sleep(sleep_time)
-
-
-def run(website_filename, interval=60):
-    threads = []
+def run(website_filename, data_log, info_log, interval=60):
+    workers = []
 
     for website in _get_websites_generator(website_filename):
-        threads.append(gevent.spawn(_open_website, website, interval))
+        worker = WebhealthWorker(website, interval, data_log, info_log)
+        worker.start()
+        workers.append(worker)
 
-    gevent.joinall(threads)
+    gevent.joinall(workers)
