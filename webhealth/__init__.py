@@ -80,6 +80,8 @@ class WebhealthWorker(gevent.Greenlet):
             except requests.RequestException as e:
                 if isinstance(e, requests.Timeout):
                     state = Metric.STATE_TIMEOUT
+                elif isinstance(e, requests.TooManyRedirects):
+                    state = Metric.STATE_TOO_MANY_REDIRECTS
                 else:
                     self._info_log.info('Connection failure to {}'.format(self._website), exc_info=e)
                     state = Metric.STATE_OTHER_FAILURE

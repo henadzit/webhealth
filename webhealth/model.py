@@ -6,6 +6,7 @@ class Metric(object):
     STATE_OK = 0
     STATE_BAD_HTTP_CODE = 1
     STATE_TIMEOUT = 2
+    STATE_TOO_MANY_REDIRECTS = 3
     STATE_OTHER_FAILURE = 100
 
     def __init__(self, website, state, start, end, http_code):
