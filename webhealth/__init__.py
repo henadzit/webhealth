@@ -97,7 +97,7 @@ class WebhealthWorker(gevent.Greenlet):
             metric = Metric(self._website, state, start, end, http_code)
             self._post_metric(metric)
 
-            duration = (end-start).total_seconds()
+            duration = (end - start).total_seconds()
             self._info_log.info('Processed {}: duration={}, state={}'.format(self._website, duration, state))
 
             sleep_time = self._interval - duration

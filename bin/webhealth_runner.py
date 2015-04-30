@@ -12,11 +12,11 @@ APP_NAME = 'webhealth'
 
 
 def _get_data_logger():
-    data_logger = logging.getLogger('webhealth_data')
+    data_logger = logging.getLogger('{}_data'.format(APP_NAME))
     data_logger.setLevel(logging.INFO)
 
     # rotate every three hours
-    fh = logging.handlers.TimedRotatingFileHandler('metrics.json', when='H', interval=3)
+    fh = logging.handlers.TimedRotatingFileHandler('{}.metrics'.format(APP_NAME), when='H', interval=3)
     fh.setLevel(logging.INFO)
 
     formatter = logging.Formatter('%(message)s')
