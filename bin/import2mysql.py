@@ -14,7 +14,6 @@ create table if not exists webhealth.metrics (
 import argparse
 import getpass
 import textwrap
-import time
 
 import MySQLdb
 
