@@ -4,6 +4,7 @@ monkey.patch_all()
 import argparse
 import logging
 import logging.handlers
+import socket
 
 import webhealth
 
@@ -47,7 +48,8 @@ def main():
     parser.add_argument('--interval', dest='interval', default=60)
     args = parser.parse_args()
 
-    webhealth.run(args.website_file,
+    webhealth.run(socket.gethostname(),
+                  args.website_file,
                   _get_data_logger(),
                   _get_info_logger(),
                   args.interval)

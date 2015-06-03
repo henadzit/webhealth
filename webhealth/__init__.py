@@ -45,8 +45,9 @@ def _get_websites_generator(filename):
 
 
 class WebhealthWorker(gevent.Greenlet):
-    def __init__(self, website, interval, data_log, info_log):
+    def __init__(self, node_id, website, interval, data_log, info_log):
         gevent.Greenlet.__init__(self)
+        self._node_id = node_id
         self._website = website
         self._interval = interval
         self._data_log = data_log
@@ -94,7 +95,7 @@ class WebhealthWorker(gevent.Greenlet):
                 http_code = resp.status_code
 
             end = datetime.datetime.now()
-            metric = Metric(self._website, state, start, end, http_code)
+            metric = Metric(self._node_id, self._website, state, start, end, http_code)
             self._post_metric(metric)
 
             duration = (end - start).total_seconds()
@@ -105,11 +106,11 @@ class WebhealthWorker(gevent.Greenlet):
                 time.sleep(sleep_time)
 
 
-def run(website_filename, data_log, info_log, interval=60):
+def run(node_id, website_filename, data_log, info_log, interval=60):
     workers = []
 
     for website in _get_websites_generator(website_filename):
-        worker = WebhealthWorker(website, interval, data_log, info_log)
+        worker = WebhealthWorker(node_id, website, interval, data_log, info_log)
         worker.start()
         workers.append(worker)
 

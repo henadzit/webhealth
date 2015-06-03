@@ -21,5 +21,7 @@ RUN git clone https://github.com/henadzit/webhealth
 USER root
 WORKDIR /home/nonroot/webhealth
 RUN pip install -r requirements.txt
-RUN export PYTHONPATH=$(pwd)
-CMD python bin/webhealth_runner.py --website-file similarweb-sites.txt
+
+USER nonroot
+WORKDIR /home/nonroot/webhealth
+CMD export PYTHONPATH=$(pwd) && python bin/webhealth_runner.py --website-file similarweb-sites.txt
