@@ -2,6 +2,7 @@
 Table schema
 
 create table if not exists webhealth.metrics (
+    node_id varchar(32) not null,
     website varchar(256) not null,
     reason smallint not null,
     start_time datetime not null,
@@ -42,7 +43,8 @@ class MetricDAO(object):
         return val.strftime('%Y-%m-%d %H:%M:%S')
 
     def _metric_to_mysql_tuple(self, m):
-        return (m.website,
+        return (m.node_id,
+                m.website,
                 m.state,
                 self._datetime_to_mysql_date(m.start),
                 self._datetime_to_mysql_date(m.end),
@@ -52,8 +54,8 @@ class MetricDAO(object):
     def flush_buffer(self):
         if self._buffer_to_insert:
             c = self._db.cursor()
-            c.executemany(textwrap.dedent('''insert into metrics (website, reason, start_time, end_time, duration, http_code)
-                                             values (%s, %s, %s, %s, %s, %s)'''),
+            c.executemany(textwrap.dedent('''insert into metrics (node_id, website, reason, start_time, end_time, duration, http_code)
+                                             values (%s, %s, %s, %s, %s, %s, %s)'''),
                           [self._metric_to_mysql_tuple(m) for m in self._buffer_to_insert])
             self._db.commit()
 
