@@ -61,7 +61,7 @@ class WebhealthWorker(gevent.Greenlet):
         time.sleep(random.randint(0, self._interval))
 
         while True:
-            start = datetime.datetime.now()
+            start = datetime.datetime.utcnow()
 
             try:
                 endpoint = self._website if HTTP_HTTPS_REGEX.match(self._website) else 'http://' + self._website
@@ -94,7 +94,7 @@ class WebhealthWorker(gevent.Greenlet):
                 state = Metric.STATE_OK if resp.ok else Metric.STATE_BAD_HTTP_CODE
                 http_code = resp.status_code
 
-            end = datetime.datetime.now()
+            end = datetime.datetime.utcnow()
             metric = Metric(self._node_id, self._website, state, start, end, http_code)
             self._post_metric(metric)
 

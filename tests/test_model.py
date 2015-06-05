@@ -2,9 +2,6 @@
 from webhealth.model import Metric
 
 
-from fixtures import *
-
-
 def test_json(metric_ok):
     json = metric_ok.to_json()
 
