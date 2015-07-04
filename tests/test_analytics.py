@@ -56,4 +56,13 @@ def _ts(secs):
      {'a.com'}),
 ])
 def test_find_failure_intersection(analysis_helper, failures_dict0, failures_dict1, expected):
-    assert expected == analysis_helper.find_failure_intersection(failures_dict0, failures_dict1, 120)
+    assert expected == analysis_helper.find_failure_intersection(failures_dict0, failures_dict1, 120, 1)
+
+
+@pytest.mark.parametrize('failures_dict0, failures_dict1, threshold_occ, expected', [
+    ({'a.com': [_ts(15)]}, {'a.com': [_ts(70)]}, 2, set()),
+    ({'a.com': [_ts(15), _ts(75)]}, {'a.com': [_ts(70), _ts(130)]}, 2, {'a.com'}),
+])
+def test_find_failure_intersection_custom_threshold_occ(analysis_helper, failures_dict0, failures_dict1,
+                                                        threshold_occ, expected):
+    assert expected == analysis_helper.find_failure_intersection(failures_dict0, failures_dict1, 60, threshold_occ)

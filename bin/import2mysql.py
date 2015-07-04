@@ -1,14 +1,19 @@
 """
 Table schema
 
-create table if not exists webhealth.metrics (
+create table if not exists metrics (
     node_id varchar(32) not null,
     website varchar(256) not null,
     reason smallint not null,
     start_time datetime not null,
     end_time datetime not null,
     duration double not null,
-    http_code smallint not null
+    http_code smallint not null,
+
+    end_time_1min datetime not null,
+    end_time_5min datetime not null,
+    failure tinyint not null
+
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 """
 
@@ -49,13 +54,19 @@ class MetricDAO(object):
                 self._datetime_to_mysql_date(m.start),
                 self._datetime_to_mysql_date(m.end),
                 (m.end - m.start).total_seconds(),  # duration in seconds
-                0 if m.http_code is None else m.http_code)
+                0 if m.http_code is None else m.http_code,
+                # normalized data
+                self._datetime_to_mysql_date(m.end_1min),
+                self._datetime_to_mysql_date(m.end_5min),
+                0 if m.http_code == 0 else 1
+                )
 
     def flush_buffer(self):
         if self._buffer_to_insert:
             c = self._db.cursor()
-            c.executemany(textwrap.dedent('''insert into metrics (node_id, website, reason, start_time, end_time, duration, http_code)
-                                             values (%s, %s, %s, %s, %s, %s, %s)'''),
+            c.executemany(textwrap.dedent('''insert into metrics (node_id, website, reason, start_time, end_time, duration, http_code,
+                                             end_time_1min, end_time_5min, failure)
+                                             values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'''),
                           [self._metric_to_mysql_tuple(m) for m in self._buffer_to_insert])
             self._db.commit()
 

@@ -17,6 +17,20 @@ class Metric(object):
         self.end = end
         self.http_code = http_code
 
+    @property
+    def end_1min(self):
+        """Returns 1 minute rounded end time.
+        """
+        return self.end.replace(second=0, microsecond=0)
+
+    @property
+    def end_5min(self):
+        """Returns 5 minute rounded end time.
+        """
+        end_1min = self.end_1min
+        new_min = end_1min.minute - end_1min.minute % 5
+        return end_1min.replace(minute=new_min)
+
     def to_json(self):
         return jsonpickle.encode(self)
 
