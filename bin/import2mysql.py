@@ -24,6 +24,8 @@ import textwrap
 import MySQLdb
 
 import webhealth
+from webhealth.model import Metric
+from webhealth.util import datetime_to_mysql_date
 
 
 INSERT_BATCH_LIMIT = 100
@@ -43,22 +45,18 @@ class MetricDAO(object):
         if len(self._buffer_to_insert) >= INSERT_BATCH_LIMIT:
             self.flush_buffer()
 
-    @staticmethod
-    def _datetime_to_mysql_date(val):
-        return val.strftime('%Y-%m-%d %H:%M:%S')
-
     def _metric_to_mysql_tuple(self, m):
         return (m.node_id,
                 m.website,
                 m.state,
-                self._datetime_to_mysql_date(m.start),
-                self._datetime_to_mysql_date(m.end),
+                datetime_to_mysql_date(m.start),
+                datetime_to_mysql_date(m.end),
                 (m.end - m.start).total_seconds(),  # duration in seconds
                 0 if m.http_code is None else m.http_code,
                 # normalized data
-                self._datetime_to_mysql_date(m.end_1min),
-                self._datetime_to_mysql_date(m.end_5min),
-                0 if m.http_code == 0 else 1
+                datetime_to_mysql_date(m.end_1min),
+                datetime_to_mysql_date(m.end_5min),
+                0 if m.state == Metric.STATE_OK else 1
                 )
 
     def flush_buffer(self):

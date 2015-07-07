@@ -5,6 +5,12 @@ import datetime
 import MySQLdb
 import pandas as pd
 
+from webhealth.util import datetime_to_mysql_date
+
+
+_AFTER_DEFAULT = datetime.datetime(1900, 1, 1)
+_BEFORE_DEFAULT = datetime.datetime(9999, 1, 1)
+
 
 class AnalysisHelper(object):
     """
@@ -27,7 +33,8 @@ class AnalysisHelper(object):
         c.execute('select count(*) as c from metrics '
                   'where node_id = %s '
                   'group by website '
-                  'order by c desc', (node_id,))
+                  'order by c desc '
+                  'limit 1', (node_id,))
         probe_count = int(c.fetchone()[0])
         c.close()
         return probe_count
@@ -39,14 +46,17 @@ class AnalysisHelper(object):
         c.close()
         return node_ids
 
-    def get_failures(self, node_id, threshold_secs=90, upper_failure_threshold=0.2):
+    def get_failures(self, node_id, threshold_secs=90, upper_failure_threshold=0.2,
+                     after=_AFTER_DEFAULT,
+                     before=_BEFORE_DEFAULT):
         """Find websites which have experienced two or more consecutive failures
         """
         probes_count = self.get_probes_count(node_id)
 
         c = self.db.cursor()
-        c.execute('select website, end_time from metrics where reason != 0 '
-                  'and node_id = %s order by end_time', (node_id,))
+        c.execute('select website, end_time from metrics where reason != 0 and end_time >= %s and end_time <= %s'
+                  'and node_id = %s order by end_time',
+                  (datetime_to_mysql_date(after), datetime_to_mysql_date(before), node_id))
 
         failed_websites = set()
         website2failure_time = defaultdict(list)
@@ -106,23 +116,27 @@ class AnalysisHelper(object):
 
         return set([k for k, v in overlapped_websites.iteritems() if v >= threshold_occ])
 
-    def plot_duration_and_success(self, website):
+    def plot_duration_and_failure(self, website,
+                                  after=_AFTER_DEFAULT,
+                                  before=_BEFORE_DEFAULT):
         c = self.db.cursor()
 
-        c.execute('select sum(failure), sum(duration), end_time_n from metrics_upd '
+        c.execute('select sum(failure), avg(duration), end_time_1min from metrics '
                   'where website=%s '
-                  'group by end_time_n '
-                  'having count(end_time_n) >= 2', (website,))
+                  'and end_time >= %s and end_time <= %s '
+                  'group by end_time_1min '
+                  'having count(end_time_1min) >= 2',
+                  (website, datetime_to_mysql_date(after), datetime_to_mysql_date(before)))
 
-        result = {'time': [], 'sum(failure)': [], 'sum(duration)': []}
+        result = {'time': [], 'sum(failure)': [], 'avg(duration)': []}
 
         for _ in range(c.rowcount):
             failure, duration, time = c.fetchone()
 
             result['time'].append(time)
             result['sum(failure)'].append(int(failure))
-            result['sum(duration)'].append(float(duration))
+            result['avg(duration)'].append(float(duration))
         c.close()
 
         df = pd.DataFrame(result)
-        return df.plot(x='time', secondary_y='sum(failure)', figsize=(16, 12))
+        return df.plot(x='time', title=website, secondary_y='sum(failure)', figsize=(16, 12))
